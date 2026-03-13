@@ -131,3 +131,285 @@ struct ChoreTaskTests {
         #expect(highOrder < lowOrder)
     }
 }
+// MARK: - Test Helpers
+
+@MainActor
+func makeTestContainer() throws -> ModelContainer {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    return try ModelContainer(
+        for: Member.self, ChoreTask.self,
+        configurations: config
+    )
+}
+
+// MARK: - MemberViewModel Tests
+
+@Suite("MemberViewModel Validation")
+struct MemberViewModelTests {
+
+    @Test("Adding valid member inserts into context")
+    @MainActor
+    func addValidMember() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(
+            name: "Quel",
+            age: 30,
+            colorHex: "#5856D6",
+            emoji: "👩🏽",
+            context: context
+        )
+
+        let members = try context.fetch(FetchDescriptor<Member>())
+        #expect(members.count == 1)
+        #expect(members.first?.name == "Quel")
+    }
+
+    @Test("Empty name sets error message")
+    @MainActor
+    func emptyNameSetsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(
+            name: "   ",
+            age: 30,
+            colorHex: "#5856D6",
+            emoji: "👩🏽",
+            context: context
+        )
+
+        #expect(viewModel.errorMessage == "Name cannot be empty")
+        let members = try context.fetch(FetchDescriptor<Member>())
+        #expect(members.isEmpty)
+    }
+
+    @Test("Age below 1 sets error message")
+    @MainActor
+    func ageBelowMinimumSetsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(
+            name: "Quel",
+            age: 0,
+            colorHex: "#5856D6",
+            emoji: "👩🏽",
+            context: context
+        )
+
+        #expect(viewModel.errorMessage == "Age must be between 1 and 100")
+        let members = try context.fetch(FetchDescriptor<Member>())
+        #expect(members.isEmpty)
+    }
+
+    @Test("Age above 100 sets error message")
+    @MainActor
+    func ageAboveMaximumSetsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(
+            name: "Quel",
+            age: 101,
+            colorHex: "#5856D6",
+            emoji: "👩🏽",
+            context: context
+        )
+
+        #expect(viewModel.errorMessage == "Age must be between 1 and 100")
+    }
+
+    @Test("Deleting member removes from context")
+    @MainActor
+    func deleteMemberRemovesFromContext() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(
+            name: "Quel",
+            age: 30,
+            colorHex: "#5856D6",
+            emoji: "👩🏽",
+            context: context
+        )
+
+        let members = try context.fetch(FetchDescriptor<Member>())
+        #expect(members.count == 1)
+
+        viewModel.deleteMember(members[0], context: context)
+        let remaining = try context.fetch(FetchDescriptor<Member>())
+        #expect(remaining.isEmpty)
+    }
+
+    @Test("Valid member clears error message")
+    @MainActor
+    func validMemberClearsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = MemberViewModel()
+
+        viewModel.addMember(name: "", age: 30, colorHex: "#5856D6", emoji: "👩🏽", context: context)
+        #expect(viewModel.errorMessage != nil)
+
+        viewModel.addMember(name: "Quel", age: 30, colorHex: "#5856D6", emoji: "👩🏽", context: context)
+        #expect(viewModel.errorMessage == nil)
+    }
+}
+
+// MARK: - TaskViewModel Tests
+
+@Suite("TaskViewModel Validation")
+struct TaskViewModelTests {
+
+    @Test("Adding valid task inserts into context")
+    @MainActor
+    func addValidTask() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(
+            title: "Wash dishes",
+            assignedMemberName: "Quel",
+            dueDate: Date(),
+            priority: .high,
+            context: context
+        )
+
+        let tasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        #expect(tasks.count == 1)
+        #expect(tasks.first?.title == "Wash dishes")
+        #expect(tasks.first?.priority == Priority.high.rawValue)
+    }
+
+    @Test("Empty title sets error message")
+    @MainActor
+    func emptyTitleSetsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(
+            title: "   ",
+            assignedMemberName: "Quel",
+            dueDate: Date(),
+            priority: .medium,
+            context: context
+        )
+
+        #expect(viewModel.errorMessage == "Task title cannot be empty")
+        let tasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        #expect(tasks.isEmpty)
+    }
+
+    @Test("Empty member name sets error message")
+    @MainActor
+    func emptyMemberNameSetsError() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(
+            title: "Vacuum",
+            assignedMemberName: "",
+            dueDate: Date(),
+            priority: .medium,
+            context: context
+        )
+
+        #expect(viewModel.errorMessage == "Task must be assigned to a member")
+    }
+
+    @Test("Toggle complete flips isComplete")
+    @MainActor
+    func toggleCompleteFlipsState() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(
+            title: "Sweep floors",
+            assignedMemberName: "Quel",
+            dueDate: Date(),
+            priority: .low,
+            context: context
+        )
+
+        let tasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        let task = try #require(tasks.first)
+
+        #expect(task.isComplete == false)
+        viewModel.toggleComplete(task)
+        #expect(task.isComplete == true)
+        viewModel.toggleComplete(task)
+        #expect(task.isComplete == false)
+    }
+
+    @Test("Tasks sorted by priority orders high before low")
+    @MainActor
+    func tasksSortedByPriorityOrdersCorrectly() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(title: "Low task", assignedMemberName: "Quel", dueDate: Date(), priority: .low, context: context)
+        viewModel.addTask(title: "High task", assignedMemberName: "Quel", dueDate: Date(), priority: .high, context: context)
+        viewModel.addTask(title: "Medium task", assignedMemberName: "Quel", dueDate: Date(), priority: .medium, context: context)
+
+        let allTasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        viewModel.tasks = allTasks
+        let sorted = viewModel.tasksSortedByPriority()
+
+        #expect(sorted[0].title == "High task")
+        #expect(sorted[1].title == "Medium task")
+        #expect(sorted[2].title == "Low task")
+    }
+
+    @Test("Filter tasks by member name returns correct tasks")
+    @MainActor
+    func filterTasksByMemberName() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(title: "Quel task", assignedMemberName: "Quel", dueDate: Date(), priority: .high, context: context)
+        viewModel.addTask(title: "Other task", assignedMemberName: "Other", dueDate: Date(), priority: .low, context: context)
+
+        let allTasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        viewModel.tasks = allTasks
+
+        let quelTasks = viewModel.tasksForMember(named: "Quel")
+        #expect(quelTasks.count == 1)
+        #expect(quelTasks.first?.title == "Quel task")
+    }
+
+    @Test("Deleting task removes from context")
+    @MainActor
+    func deleteTaskRemovesFromContext() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let viewModel = TaskViewModel()
+
+        viewModel.addTask(
+            title: "Take out trash",
+            assignedMemberName: "Quel",
+            dueDate: Date(),
+            priority: .medium,
+            context: context
+        )
+
+        let tasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        #expect(tasks.count == 1)
+
+        viewModel.deleteTask(tasks[0], context: context)
+        let remaining = try context.fetch(FetchDescriptor<ChoreTask>())
+        #expect(remaining.isEmpty)
+    }
+}
