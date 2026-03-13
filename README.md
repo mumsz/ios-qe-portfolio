@@ -170,5 +170,5 @@ reflecting real QE thinking about severity and triage.
 ## Author
 
 Racquel Rolle
-[LinkedIn](https://linkedin.com/in/yourprofile) |
+[LinkedIn](www.linkedin.com/in/racquel-r-101540195) |
 [GitHub](https://github.com/mumsz)
